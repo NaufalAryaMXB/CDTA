@@ -1,155 +1,122 @@
-# Backend PPDB GIS
+# Backend PPDB GIS (15 - Batasan)
 
-Backend ini memakai FastAPI, PostgreSQL, dan PostGIS untuk menyimpan data sekolah serta menyediakan API untuk kebutuhan web GIS PPDB.
+Backend ini memakai FastAPI + PostgreSQL + PostGIS.
 
-## Kebutuhan
+Struktur operasional final:
+- 1 file SQL migrasi: `migration/001_bootstrap_schema.sql`
+- 2 file import:
+  - `import_batasan_geojson.py`
+  - `import_sekolah_json.py`
 
-Install aplikasi berikut:
+## Prasyarat
 
-- Python 3.10 atau lebih baru
+- Python 3.10+
 - PostgreSQL
-- PostGIS extension untuk PostgreSQL
+- PostGIS extension
 
-Install package Python berikut:
+Install dependency Python:
 
 ```powershell
 pip install fastapi uvicorn sqlalchemy psycopg2-binary python-dotenv bcrypt
 ```
 
-## Setup Database
+## Setup `.env`
 
-Buat database PostgreSQL terlebih dulu. Contoh:
-
-```sql
-CREATE DATABASE ppdb;
-```
-
-Pastikan user PostgreSQL yang dipakai punya akses ke database tersebut.
-
-## Setup Environment
-
-Buat file `.env` di root folder backend.
-
-Contoh isi:
+Buat file `.env` di root project `15 - Batasan` (satu level di atas folder `backend`):
 
 ```env
-DATABASE_URL="postgresql://postgres:password_database@localhost/ppdb"
+DATABASE_URL='postgresql://postgres:password@localhost/ppdb'
 ```
 
-Sesuaikan:
+## 1) Jalankan Migrasi SQL (Idempotent)
 
-- `postgres` dengan username database
-- `password_database` dengan password database
-- `localhost` dengan host database
-- `ppdb` dengan nama database
-
-## Migrasi Database
-
-Jalankan migrasi untuk membuat struktur tabel:
+Migrasi utama:
 
 ```powershell
-psql -U postgres -d ppdb -f migrations/001_init_schema.sql
+psql -U postgres -d ppdb -f backend/migration/001_bootstrap_schema.sql
 ```
 
-Jika `psql` tidak dikenali di terminal, tambahkan folder `bin` PostgreSQL ke PATH, atau jalankan perintah dari folder instalasi PostgreSQL.
+Catatan:
+- Aman dijalankan berulang.
+- Akan skip object yang sudah ada.
+- Mencakup tabel: `users`, `sekolah`, `zonasi`, `batasan_wilayah`, `user_profiles`, `admin_profiles`, `operator_profiles`.
 
-Migrasi ini akan membuat:
+## 2) Import Batasan Wilayah (GeoJSON)
 
-- extension `postgis`
-- tabel `users`
-- tabel `sekolah`
-- tabel `zonasi`
-- index untuk kolom lokasi sekolah
+File sumber default:
+- `backend/migration/Salinan Jawa_Barat_Kecamatan_Only_4326.geojson`
 
-## Import Data Sekolah
+Jalankan:
 
-Data sekolah berada di:
+```powershell
+python backend/import_batasan_geojson.py
+```
+
+Perilaku:
+- `TRUNCATE TABLE batasan_wilayah RESTART IDENTITY`
+- Import ulang semua feature
+- Geometry dinormalisasi ke 2D (drop Z), SRID 4326, disimpan sebagai MultiPolygon.
+
+Contoh output:
 
 ```text
-migrations/output.json
+GeoJSON      : Salinan Jawa_Barat_Kecamatan_Only_4326.geojson
+Total feature: 580
+Inserted     : 580
+Skipped      : 0
 ```
 
-Untuk memasukkan data sekolah ke tabel `sekolah`:
+## 3) Import Data Sekolah (2rb / 75rb)
+
+Dataset tersedia:
+- 2rb: `backend/migration/output.json`
+- 75rb: `backend/migration/sekolah_jabar_tanpa_tk75rb.json`
+
+Jalankan interaktif:
 
 ```powershell
-python migrations/import_schools_from_json.py
+python backend/import_sekolah_json.py
 ```
 
-Jika ingin mengosongkan tabel `sekolah` dulu lalu import ulang dari awal:
+Atau langsung via argumen:
 
 ```powershell
-python migrations/import_schools_from_json.py --truncate
+python backend/import_sekolah_json.py --dataset 2rb
+python backend/import_sekolah_json.py --dataset 75rb
 ```
 
-Script import akan:
+Perilaku:
+- `TRUNCATE TABLE sekolah RESTART IDENTITY`
+- Isi ulang tabel berdasarkan dataset pilihan
+- Skip baris tanpa lat/lng valid
+- Kolom `location` diisi dari `longitude/latitude`.
 
-- membaca data dari `output.json`
-- mengisi tabel `sekolah`
-- mengubah status `N` menjadi `Negeri`
-- mengubah status `S` menjadi `Swasta`
-- membuat kolom `location` PostGIS dari latitude dan longitude
-- melewati data yang sudah pernah diinsert agar tidak dobel
+Contoh output:
+
+```text
+Dataset      : output.json
+Total JSON   : 2000
+Inserted     : 2000
+Skipped      : 0
+```
 
 ## Menjalankan Backend
 
-Jalankan server dari root folder backend:
-
 ```powershell
-uvicorn app.main:app --reload   atau     python -m uvicorn app.main:app --reload
+uvicorn backend.app.main:app --reload
 ```
 
-Backend akan berjalan di:
+Endpoint:
+- API base: `http://127.0.0.1:8000`
+- Swagger: `http://127.0.0.1:8000/docs`
 
-```text
-http://127.0.0.1:8000
-```
+## Troubleshooting
 
-Swagger UI tersedia di:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Endpoint Yang Tersedia
-
-Auth:
-
-- `POST /auth/register`
-- `POST /auth/login`
-
-Sekolah:
-
-- `GET /schools`
-- `GET /schools/{school_id}`
-
-Filter `GET /schools`:
-
-- `jenjang`
-- `kecamatan`
-- `status`
-- `nama`
-
-Contoh:
-
-```text
-GET /schools?jenjang=SMA&status=Negeri
-GET /schools?kecamatan=Kec. Cibinong
-GET /schools?nama=smp
-```
-
-Zonasi:
-
-- `GET /zonasi`
-- `GET /zonasi/{zonasi_id}`
-
-Map:
-
-- `GET /map/schools`
-- `GET /map/zonasi`
-
-## Catatan
-
-- Tabel `zonasi` saat ini sengaja dikosongkan datanya.
-- Tabel `lokasi_pengguna` tidak digunakan karena lokasi user akan dikirim langsung dari device atau input manual.
-- Endpoint routing jalan nyata belum dibuat karena perlu layanan routing seperti OSRM, GraphHopper, Mapbox Directions API, atau Google Directions API.
-- File `.env` jangan dimasukkan ke repository publik karena berisi kredensial database.
+- `DATABASE_URL tidak ditemukan`:
+  - Pastikan `.env` ada di root `15 - Batasan`.
+- `psql command not found`:
+  - Tambahkan PostgreSQL `bin` ke PATH.
+- Error PostGIS (`type geography does not exist`):
+  - Pastikan `CREATE EXTENSION postgis` berhasil.
+- Error geometry Z-dimension:
+  - Gunakan script `import_batasan_geojson.py` ini (sudah force 2D).
