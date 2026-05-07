@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 
-BACKEND_DIR = Path(__file__).resolve().parent
-GEOJSON_PATH = BACKEND_DIR / "migration" / "Salinan Jawa_Barat_Kecamatan_Only_4326.geojson"
+MIGRATION_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = MIGRATION_DIR.parent
+GEOJSON_PATH = MIGRATION_DIR / "Salinan Jawa_Barat_Kecamatan_Only_4326.geojson"
 
 
 def as_text(value):

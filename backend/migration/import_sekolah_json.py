@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 
-BACKEND_DIR = Path(__file__).resolve().parent
-MIGRATION_DIR = BACKEND_DIR / "migration"
+MIGRATION_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = MIGRATION_DIR.parent
 DATASET_2RB = MIGRATION_DIR / "output.json"
 DATASET_75RB = MIGRATION_DIR / "sekolah_jabar_tanpa_tk75rb.json"
 
